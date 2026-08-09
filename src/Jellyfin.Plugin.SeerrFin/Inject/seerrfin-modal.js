@@ -317,6 +317,70 @@ window.seerrFinLog = window.seerrFinLog || {
         return tmdbDetails;
     }
 
+    function normalizeMediaStatus(raw) {
+        if (raw == null || raw === '') {
+            return null;
+        }
+        if (typeof raw === 'number' && !Number.isNaN(raw)) {
+            return raw;
+        }
+        const key = String(raw).trim().toUpperCase();
+        const map = {
+            UNKNOWN: 1,
+            PENDING: 2,
+            PROCESSING: 3,
+            PARTIALLY_AVAILABLE: 4,
+            AVAILABLE: 5,
+            DELETED: 6,
+            BLACKLISTED: 7,
+            BLOCKED: 7
+        };
+        if (key in map) {
+            return map[key];
+        }
+        const asNum = parseInt(key, 10);
+        return Number.isNaN(asNum) ? null : asNum;
+    }
+
+    function getRequestButtonState(data, is4k) {
+        const defaultLabel = is4k ? 'Request 4K' : 'Request';
+        const info = data && data.mediaInfo;
+        const raw = is4k
+            ? (info && (info.status4k != null ? info.status4k : info.status4K)) ?? (data && data.status4k)
+            : (info && info.status != null ? info.status : (data && data.status));
+        const status = normalizeMediaStatus(raw);
+
+        // Seerr mediaInfo means HD was already requested
+        if (!is4k && info && (status == null || status <= 1)) {
+            return { requested: true, label: 'Already requested' };
+        }
+
+        if (status == null || status <= 1 || status === 6) {
+            return { requested: false, label: defaultLabel };
+        }
+
+        const labels = {
+            2: 'Pending',
+            3: 'Processing',
+            4: 'Partially available',
+            5: 'Available',
+            7: 'Blocklisted'
+        };
+        return { requested: true, label: labels[status] || 'Already requested' };
+    }
+
+    function markRequestButton(is4k, label) {
+        if (!activeDetailsRoot) {
+            return;
+        }
+        const btn = activeDetailsRoot.querySelector(is4k ? '[data-action="request-4k"]' : '[data-action="request"]');
+        if (!btn) {
+            return;
+        }
+        btn.disabled = true;
+        btn.textContent = label || 'Already requested';
+    }
+
     function fetchJustWatchQualities(mediaId, mediaType) {
         return ApiClient.ajax({
             url: ApiClient.getUrl('SeerrFin/justwatch/qualities/' + mediaType + '/' + mediaId),
@@ -570,10 +634,19 @@ window.seerrFinLog = window.seerrFinLog || {
             }
             log.info('request submitted for ' + mediaType + '/' + mediaId);
             Dashboard.alert('Successfully requested');
+            markRequestButton(!!option.is4k, 'Already requested');
             if (typeof onSuccess === 'function') {
                 onSuccess();
             }
         }).catch(function (err) {
+            if (err && err.status === 409) {
+                Dashboard.alert('Already requested');
+                markRequestButton(!!option.is4k, 'Already requested');
+                if (typeof onSuccess === 'function') {
+                    onSuccess();
+                }
+                return;
+            }
             log.error('request failed for ' + mediaType + '/' + mediaId, err);
             Dashboard.alert('Request failed');
         });
@@ -869,6 +942,8 @@ window.seerrFinLog = window.seerrFinLog || {
         const tmdbId = data.id;
         const imdbId = data.externalIds && (data.externalIds.imdbId || data.externalIds.imdb_id);
         const logoUrl = getLogoImageUrl(data);
+        const requestState = getRequestButtonState(data, false);
+        const request4kState = getRequestButtonState(data, true);
 
         return `
             <div class="bst-popout-wrapper">
@@ -900,9 +975,9 @@ window.seerrFinLog = window.seerrFinLog || {
                                     <div class="bst-content">
                                         <div class="bst-actions-row">
                                             <div class="bst-actions-left">
-                                                <button type="button" class="bst-btn-request" data-action="request">Request</button>
+                                                <button type="button" class="bst-btn-request" data-action="request"${requestState.requested ? ' disabled' : ''}>${escapeHtml(requestState.label)}</button>
                                                 ${getRequestModalAdvanced().showRequest4kButton !== false
-                                                    ? `<button type="button" class="bst-btn-request-4k" data-action="request-4k">Request 4K</button>`
+                                                    ? `<button type="button" class="bst-btn-request-4k" data-action="request-4k"${request4kState.requested ? ' disabled' : ''}>${escapeHtml(request4kState.label)}</button>`
                                                     : ''}
                                                 ${trailerKey
                                                     ? `<button type="button" class="bst-btn-trailer" data-action="trailer" data-trailer-key="${escapeHtml(trailerKey)}">Trailer</button>`
@@ -966,12 +1041,15 @@ window.seerrFinLog = window.seerrFinLog || {
             });
         }
 
-        root.querySelector('[data-action="request"]').addEventListener('click', function () {
-            openQualityModal(mediaId, mediaType, title);
-        });
+        const requestBtn = root.querySelector('[data-action="request"]');
+        if (requestBtn && !requestBtn.disabled) {
+            requestBtn.addEventListener('click', function () {
+                openQualityModal(mediaId, mediaType, title);
+            });
+        }
 
         const request4kBtn = root.querySelector('[data-action="request-4k"]');
-        if (request4kBtn) {
+        if (request4kBtn && !request4kBtn.disabled) {
             request4kBtn.addEventListener('click', function () {
                 openQualityModal(mediaId, mediaType, title, undefined, true);
             });
