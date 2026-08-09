@@ -767,13 +767,25 @@ window.seerrFinLog = window.seerrFinLog || {
         activeQualityRoot.querySelector('.bst-quality-backdrop').addEventListener('click', closeQualityModal);
         activeQualityRoot.querySelector('.bst-quality-close').addEventListener('click', closeQualityModal);
 
+        function finishRequest() {
+            closeQualityModal();
+            if (typeof onSuccess === 'function') {
+                onSuccess();
+            }
+        }
+
         ApiClient.ajax({
             url: ApiClient.getUrl('SeerrFin/request-options/' + mediaType),
             type: 'GET',
             dataType: 'json'
         }).then(function (options) {
+            // If no profiles submit with Seerr defaults
             if (!options || !options.length) {
-                list.innerHTML = `<div class="bst-quality-empty">No quality profiles available.</div>`;
+                list.innerHTML = `<div class="bst-quality-loading">Submitting request…</div>`;
+                submitRequest(mediaId, mediaType, {
+                    is4k: is4k,
+                    seasons: selectedSeasons
+                }, finishRequest);
                 return;
             }
 
@@ -799,12 +811,7 @@ window.seerrFinLog = window.seerrFinLog || {
                     rootFolder: btn.getAttribute('data-root-folder') || null,
                     is4k: btn.getAttribute('data-is-4k') === '1',
                     seasons: selectedSeasons
-                }, function () {
-                    closeQualityModal();
-                    if (typeof onSuccess === 'function') {
-                        onSuccess();
-                    }
-                });
+                }, finishRequest);
 
                 request.then(function () {
                     btn.disabled = false;
