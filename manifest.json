@@ -10,6 +10,15 @@
     "repositoryUrl": "https://github.com/varunaditya-plus/SeerrFin",
     "versions": [
       {
+        "version": "1.6.5.4",
+        "changelog": "Request button is disabled when media has already been requested in Seerr",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/varunaditya-plus/SeerrFin/releases/download/1.6.5.4/Jellyfin.Plugin.SeerrFin_10.11.0.zip",
+        "checksum": "222BC906829A8E16EE49F9E912B7C16C",
+        "timestamp": "2026-08-09T23:39:34.0000000Z",
+        "dependencies": []
+      },
+      {
         "version": "1.6.5.3",
         "changelog": "Fixed request modal not appearing in JMP and blocked requests if no quality profiles",
         "targetAbi": "10.11.0.0",
