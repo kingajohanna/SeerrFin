@@ -129,10 +129,11 @@ They need a matching Seerr user linked to their Jellyfin user with request permi
 
 </details>
 
-<!--
+
 ## Contributing & Support
-Please open pull requests if you have any suggestions or features you want to be implemented in this plugin. This is my first C# project, and is inspired heavily by [Home Screen Sections](https://github.com/IAmParadox27/jellyfin-plugin-home-sections). For suggestions, feature requests, or bug reports, open an issue. Please include your Jellyfin version and a screenshot if relevant.
--->
+If you have any suggestions or features you want to be implemented in this plugin, please open a pull request. For suggestions, feature requests, or bug reports, open an issue. Please include your Jellyfin version and a screenshot if relevant.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for testing expectations, commit format, versioning, and PR guidelines.
 
 ## Credits
 - [Lato](https://fonts.google.com/specimen/Lato) by Łukasz Dziedzic, served via Google Fonts.
