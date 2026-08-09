@@ -10,6 +10,15 @@
     "repositoryUrl": "https://github.com/varunaditya-plus/SeerrFin",
     "versions": [
       {
+        "version": "1.6.5.2",
+        "changelog": "Fixed css/js injection failing to load when Jellyfin uses a base URL",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/varunaditya-plus/SeerrFin/releases/download/1.6.5.2/Jellyfin.Plugin.SeerrFin_10.11.0.zip",
+        "checksum": "6B7E7E3E94E76D134CF888258DC3476A",
+        "timestamp": "2026-08-09T22:48:16.0000000Z",
+        "dependencies": []
+      },
+      {
         "version": "1.6.5.1",
         "changelog": "Added option to disable image caching and directly load images from tmdb sources",
         "targetAbi": "10.11.0.0",
