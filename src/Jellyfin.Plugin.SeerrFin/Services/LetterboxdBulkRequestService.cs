@@ -51,30 +51,17 @@ public class LetterboxdBulkRequestService
         int total = tmdbIds.Count;
 
         JArray requestOptions = _requestService.GetRequestOptions(username, "movie");
-        if (requestOptions.Count == 0)
+        // Empty options means no Advanced Requests permission so use Seerr defaults.
+        bool useSeerrDefaults = requestOptions.Count == 0;
+        string qualityMode = string.Empty;
+        if (!useSeerrDefaults)
         {
-            foreach (int tmdbId in tmdbIds)
+            qualityMode = NormalizeQualityMode(string.IsNullOrWhiteSpace(payload.QualityMode) ? AdvancedSettingsHelper.Resolve(SeerrFinPlugin.Instance.Configuration).Letterboxd.DefaultBulkQualityMode : payload.QualityMode);
+            if (qualityMode == "singleprofile" &&
+                (payload.ServerId == null || payload.ProfileId == null))
             {
-                result.Results.Add(new LetterboxdBulkRequestItemResult
-                {
-                    TmdbId = tmdbId,
-                    Status = "failed",
-                    Message = "No Radarr quality profiles available."
-                });
-                result.Failed++;
+                throw new ArgumentException("ServerId and ProfileId are required for single profile mode.");
             }
-
-            return result;
-        }
-
-        string qualityMode = NormalizeQualityMode(
-            string.IsNullOrWhiteSpace(payload.QualityMode)
-                ? AdvancedSettingsHelper.Resolve(SeerrFinPlugin.Instance.Configuration).Letterboxd.DefaultBulkQualityMode
-                : payload.QualityMode);
-        if (qualityMode == "singleprofile" &&
-            (payload.ServerId == null || payload.ProfileId == null))
-        {
-            throw new ArgumentException("ServerId and ProfileId are required for single profile mode.");
         }
 
         SetRequestProgress(userId, 0, total, tmdbIds[0], result.Results);
@@ -90,9 +77,9 @@ public class LetterboxdBulkRequestService
                 try
                 {
                     (int? serverId, int? profileId, string? rootFolder, bool is4k, string? profileName, string? qualityLabel, string? warning) =
-                        await ResolveRequestOptionAsync(qualityMode, tmdbId, payload, requestOptions, cancellationToken).ConfigureAwait(false);
+                        useSeerrDefaults ? (null, null, null, payload.Is4k, null, null, null) : await ResolveRequestOptionAsync(qualityMode, tmdbId, payload, requestOptions, cancellationToken).ConfigureAwait(false);
 
-                    if (serverId == null || profileId == null)
+                    if (!useSeerrDefaults && (serverId == null || profileId == null))
                     {
                         result.Results.Add(new LetterboxdBulkRequestItemResult
                         {

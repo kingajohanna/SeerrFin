@@ -606,15 +606,53 @@ window.seerrFinLog = window.seerrFinLog || {
             });
     }
 
-    function submitRequest(mediaId, mediaType, option, onSuccess) {
+    function notifyUser(message) {
+        const text = String(message || 'Request failed');
+
+        if (activeDetailsRoot) {
+            let notice = activeDetailsRoot.querySelector('[data-request-notice]');
+            if (!notice) {
+                const actionsRow = activeDetailsRoot.querySelector('.bst-actions-row');
+                if (!actionsRow) {
+                    return;
+                }
+                notice = document.createElement('div');
+                notice.className = 'bst-request-notice';
+                notice.setAttribute('data-request-notice', '1');
+                notice.setAttribute('role', 'alert');
+                actionsRow.insertAdjacentElement('afterend', notice);
+            }
+
+            notice.textContent = text;
+            notice.hidden = false;
+            return;
+        }
+
+        try {
+            if (typeof Dashboard !== 'undefined' && typeof Dashboard.alert === 'function') {
+                Dashboard.alert(text);
+                return;
+            }
+        } catch (err) {}
+        window.alert(text);
+    }
+
+    function submitRequest(mediaId, mediaType, option, onSuccess, onError) {
         const payload = {
             MediaType: mediaType,
             MediaId: parseInt(mediaId, 10),
-            ServerId: option.serverId,
-            ProfileId: option.profileId,
-            RootFolder: option.rootFolder || null,
             Is4k: !!option.is4k
         };
+
+        if (option.serverId != null && !Number.isNaN(Number(option.serverId))) {
+            payload.ServerId = Number(option.serverId);
+        }
+        if (option.profileId != null && !Number.isNaN(Number(option.profileId))) {
+            payload.ProfileId = Number(option.profileId);
+        }
+        if (option.rootFolder) {
+            payload.RootFolder = option.rootFolder;
+        }
 
         if (mediaType === 'tv' && option.seasons && option.seasons.length) {
             payload.Seasons = option.seasons.slice().sort(function (a, b) { return a - b; });
@@ -628,27 +666,63 @@ window.seerrFinLog = window.seerrFinLog || {
             dataType: 'json'
         }).then(function (response) {
             if (response && response.errors && response.errors.length > 0) {
-                Dashboard.alert('Request failed. Check logs for details.');
+                const message = 'Request failed. Check logs for details.';
                 log.error('request failed with API errors', response);
-                return;
+                if (typeof onError === 'function') {
+                    onError(message);
+                } else {
+                    notifyUser(message);
+                }
+                return Promise.reject(response);
             }
             log.info('request submitted for ' + mediaType + '/' + mediaId);
-            Dashboard.alert('Successfully requested');
             markRequestButton(!!option.is4k, 'Already requested');
             if (typeof onSuccess === 'function') {
                 onSuccess();
             }
         }).catch(function (err) {
+            if (err && err.errors) {
+                return Promise.reject(err);
+            }
             if (err && err.status === 409) {
-                Dashboard.alert('Already requested');
                 markRequestButton(!!option.is4k, 'Already requested');
                 if (typeof onSuccess === 'function') {
                     onSuccess();
                 }
                 return;
             }
-            log.error('request failed for ' + mediaType + '/' + mediaId, err);
-            Dashboard.alert('Request failed');
+
+            let messagePromise;
+            if (err && err.responseJSON && (err.responseJSON.message || err.responseJSON.error)) {
+                messagePromise = Promise.resolve(String(err.responseJSON.message || err.responseJSON.error));
+            } else if (err && typeof err.text === 'function') {
+                // Jellyfin ApiClient (fetch) often rejects with a Response object.
+                const reader = typeof err.clone === 'function' ? err.clone() : err;
+                messagePromise = reader.text().then(function (text) {
+                    try {
+                        const body = JSON.parse(text);
+                        return String(body.message || body.error || text || 'Request failed');
+                    } catch (e) {
+                        return text || 'Request failed';
+                    }
+                }).catch(function () {
+                    return 'Request failed';
+                });
+            } else if (err && typeof err.message === 'string' && err.message) {
+                messagePromise = Promise.resolve(err.message);
+            } else {
+                messagePromise = Promise.resolve('Request failed');
+            }
+
+            return messagePromise.then(function (message) {
+                log.error('request failed for ' + mediaType + '/' + mediaId, err);
+                if (typeof onError === 'function') {
+                    onError(message);
+                } else {
+                    notifyUser(message);
+                }
+                return Promise.reject(err);
+            });
         });
     }
 
@@ -807,10 +881,18 @@ window.seerrFinLog = window.seerrFinLog || {
 
     function renderQualityOptions(options) {
         return options.map(function (opt) {
-            const label = escapeHtml(opt.serverName && opt.serverName !== opt.profileName
-                ? opt.profileName
-                : (opt.profileName || 'Default'));
-            const subHtml = opt.serverName ? `<span class="bst-quality-option-sub">${escapeHtml(opt.serverName + (opt.is4k ? ' · 4K' : ''))}</span>` : '';
+            const label = escapeHtml(opt.profileName || 'Default');
+            const subParts = [];
+            if (opt.serverName) {
+                subParts.push(opt.serverName);
+            }
+            if (opt.is4k) {
+                subParts.push('4K');
+            }
+            if (opt.isDefaultProfile) {
+                subParts.push('default');
+            }
+            const subHtml = subParts.length ? `<span class="bst-quality-option-sub">${escapeHtml(subParts.join(' · '))}</span>` : '';
             return `
                 <button type="button" class="bst-quality-option"
                     data-server-id="${opt.serverId}" data-profile-id="${opt.profileId}"
@@ -830,9 +912,10 @@ window.seerrFinLog = window.seerrFinLog || {
             selectedSeasons = [];
         }
 
-        closeQualityModal();
         is4k = !!is4k;
 
+        // Show shell so the click feels instant (fill profiles when the api returns)
+        closeQualityModal();
         document.body.insertAdjacentHTML('beforeend', renderQualityModalShell(is4k));
         activeQualityRoot = document.body.lastElementChild;
 
@@ -847,26 +930,66 @@ window.seerrFinLog = window.seerrFinLog || {
             }
         }
 
+        function failRequest(message) {
+            if (!list || !activeQualityRoot) {
+                notifyUser(message || 'Request failed');
+                return;
+            }
+            list.innerHTML = `<div class="bst-quality-empty">${escapeHtml(message || 'Request failed')}</div>`;
+        }
+
         ApiClient.ajax({
             url: ApiClient.getUrl('SeerrFin/request-options/' + mediaType),
             type: 'GET',
             dataType: 'json'
-        }).then(function (options) {
-            // If no profiles submit with Seerr defaults
-            if (!options || !options.length) {
+        }).then(function (data) {
+            if (!activeQualityRoot) {
+                return;
+            }
+
+            const rawOptions = (data && (data.options || data.Options)) || [];
+            const payload = {
+                options: (Array.isArray(rawOptions) ? rawOptions : []).map(function (opt) {
+                    if (!opt) {
+                        return null;
+                    }
+                    return {
+                        serverId: opt.serverId != null ? opt.serverId : opt.ServerId,
+                        serverName: opt.serverName || opt.ServerName || '',
+                        profileId: opt.profileId != null ? opt.profileId : opt.ProfileId,
+                        profileName: opt.profileName || opt.ProfileName || '',
+                        rootFolder: opt.rootFolder || opt.RootFolder || '',
+                        is4k: !!(opt.is4k != null ? opt.is4k : opt.Is4k),
+                        isDefaultProfile: !!(opt.isDefaultProfile != null ? opt.isDefaultProfile : opt.IsDefaultProfile)
+                    };
+                }).filter(Boolean),
+                canRequest: !!(data && (data.canRequest || data.CanRequest)),
+                canRequest4k: !!(data && (data.canRequest4k || data.CanRequest4k)),
+                canRequestAdvanced: !!(data && (data.canRequestAdvanced || data.CanRequestAdvanced))
+            };
+            const allowed = is4k ? payload.canRequest4k : payload.canRequest;
+            if (!allowed) {
+                closeQualityModal();
+                notifyUser(is4k
+                    ? 'You do not have permission to make 4K requests.'
+                    : (mediaType === 'tv' ? 'You do not have permission to make series requests.' : 'You do not have permission to make movie requests.'));
+                return;
+            }
+
+            if (!payload.canRequestAdvanced || !payload.options.length) {
                 list.innerHTML = `<div class="bst-quality-loading">Submitting request…</div>`;
                 submitRequest(mediaId, mediaType, {
                     is4k: is4k,
                     seasons: selectedSeasons
-                }, finishRequest);
+                }, finishRequest, failRequest);
                 return;
             }
 
-            let filteredOptions = options.filter(function (opt) {
+            let filteredOptions = payload.options.filter(function (opt) {
                 return !!opt.is4k === is4k;
             });
             if (!filteredOptions.length) {
-                filteredOptions = options;
+                filteredOptions = payload.options;
             }
 
             list.innerHTML = renderQualityOptions(filteredOptions);
@@ -878,23 +1001,19 @@ window.seerrFinLog = window.seerrFinLog || {
                 }
 
                 btn.disabled = true;
-                const request = submitRequest(mediaId, mediaType, {
+                submitRequest(mediaId, mediaType, {
                     serverId: parseInt(btn.getAttribute('data-server-id'), 10),
                     profileId: parseInt(btn.getAttribute('data-profile-id'), 10),
                     rootFolder: btn.getAttribute('data-root-folder') || null,
                     is4k: btn.getAttribute('data-is-4k') === '1',
                     seasons: selectedSeasons
-                }, finishRequest);
-
-                request.then(function () {
-                    btn.disabled = false;
-                }, function () {
+                }, finishRequest, failRequest).catch(function () {
                     btn.disabled = false;
                 });
             });
         }).catch(function (err) {
             log.error('profiles load failed', err);
-            list.innerHTML = `<div class="bst-quality-empty">Failed to load quality profiles.</div>`;
+            failRequest('Failed to load quality profiles.');
         });
     }
 

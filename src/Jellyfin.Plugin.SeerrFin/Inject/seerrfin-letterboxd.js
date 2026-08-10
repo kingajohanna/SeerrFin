@@ -1045,17 +1045,60 @@ window.seerrFinLog = window.seerrFinLog || {
         });
     }
 
-    function continueBulkRequest(panel, container, tmdbIds) {
-        const defaultMode = getDefaultBulkQualityMode();
-        if (defaultMode === 'highestAvailable' || defaultMode === 'mostCommon') {
-            submitBulkRequest(container, {
-                QualityMode: defaultMode,
-                TmdbIds: tmdbIds.slice()
-            }, panel);
-            return;
-        }
+    function normalizeRequestOptionsPayload(data) {
+        const raw = (data && (data.options || data.Options)) || [];
+        return {
+            options: (Array.isArray(raw) ? raw : []).map(function (opt) {
+                if (!opt) {
+                    return null;
+                }
+                return {
+                    serverId: opt.serverId != null ? opt.serverId : opt.ServerId,
+                    serverName: opt.serverName || opt.ServerName || '',
+                    profileId: opt.profileId != null ? opt.profileId : opt.ProfileId,
+                    profileName: opt.profileName || opt.ProfileName || '',
+                    rootFolder: opt.rootFolder || opt.RootFolder || '',
+                    is4k: !!(opt.is4k != null ? opt.is4k : opt.Is4k)
+                };
+            }).filter(Boolean),
+            canRequest: !!(data && (data.canRequest || data.CanRequest)),
+            canRequestAdvanced: !!(data && (data.canRequestAdvanced || data.CanRequestAdvanced))
+        };
+    }
 
-        showQualitySelection(panel, container, tmdbIds);
+    function continueBulkRequest(panel, container, tmdbIds) {
+        ApiClient.ajax({
+            url: ApiClient.getUrl('SeerrFin/request-options/movie'),
+            type: 'GET',
+            dataType: 'json'
+        }).then(function (data) {
+            const payload = normalizeRequestOptionsPayload(data);
+            if (!payload.canRequest) {
+                showBulkRequestError(panel, 'You do not have permission to make movie requests.');
+                return;
+            }
+
+            // if no advanced permission / no profiles use Seerr defaults (no picker)
+            if (!payload.canRequestAdvanced || !payload.options.length) {
+                submitBulkRequest(container, {
+                    TmdbIds: tmdbIds.slice()
+                }, panel);
+                return;
+            }
+
+            const defaultMode = getDefaultBulkQualityMode();
+            if (defaultMode === 'highestAvailable' || defaultMode === 'mostCommon') {
+                submitBulkRequest(container, {
+                    QualityMode: defaultMode,
+                    TmdbIds: tmdbIds.slice()
+                }, panel);
+                return;
+            }
+            showQualitySelection(panel, container, tmdbIds);
+        }).catch(function (err) {
+            log.error('Letterboxd request options failed', err);
+            showBulkRequestError(panel, 'Could not load request options.');
+        });
     }
 
     function handleAlreadyRequested(panel, container, alreadyRequestedIds, selectedIds) {
@@ -1117,7 +1160,14 @@ window.seerrFinLog = window.seerrFinLog || {
     function renderProfileOptions(options) {
         return options.map(function (opt) {
             const label = escapeHtml(opt.profileName || 'Default');
-            const subHtml = opt.serverName ? `<span class="bst-quality-option-sub">${escapeHtml(opt.serverName + (opt.is4k ? ' · 4K' : ''))}</span>` : '';
+            const subParts = [];
+            if (opt.serverName) {
+                subParts.push(opt.serverName);
+            }
+            if (opt.is4k) {
+                subParts.push('4K');
+            }
+            const subHtml = subParts.length ? `<span class="bst-quality-option-sub">${escapeHtml(subParts.join(' · '))}</span>` : '';
             return `
                 <button type="button" class="bst-quality-option" data-profile-id="${opt.profileId}"
                     data-server-id="${opt.serverId}" data-root-folder="${escapeHtml(opt.rootFolder || '')}"
@@ -1141,13 +1191,14 @@ window.seerrFinLog = window.seerrFinLog || {
             url: ApiClient.getUrl('SeerrFin/request-options/movie'),
             type: 'GET',
             dataType: 'json'
-        }).then(function (options) {
-            if (!options || !options.length) {
+        }).then(function (data) {
+            const payload = normalizeRequestOptionsPayload(data);
+            if (!payload.canRequestAdvanced || !payload.options.length) {
                 list.innerHTML = `<div class="bst-quality-empty">No quality profiles available.</div>`;
                 return;
             }
 
-            list.innerHTML = renderProfileOptions(options);
+            list.innerHTML = renderProfileOptions(payload.options);
 
             list.addEventListener('click', function onProfileClick(event) {
                 const button = event.target.closest('[data-profile-id]');

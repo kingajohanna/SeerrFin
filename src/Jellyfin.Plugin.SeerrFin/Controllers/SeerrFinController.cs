@@ -581,8 +581,16 @@ public class SeerrFinController : ControllerBase
             return Forbid();
         }
 
-        JArray options = _requestService.GetRequestOptions(username, mediaType);
-        return Content(options.ToString(), "application/json");
+        RequestOptionsResult result = _requestService.GetRequestOptionsResult(username, mediaType);
+        // serialize so nested option keys stay camelcase
+        JObject payload = new()
+        {
+            ["canRequest"] = result.CanRequest,
+            ["canRequest4k"] = result.CanRequest4k,
+            ["canRequestAdvanced"] = result.CanRequestAdvanced,
+            ["options"] = result.Options
+        };
+        return Content(payload.ToString(Newtonsoft.Json.Formatting.None), "application/json");
     }
 
     [HttpGet("requests")]
