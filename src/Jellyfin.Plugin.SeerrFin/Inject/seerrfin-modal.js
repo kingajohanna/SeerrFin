@@ -359,10 +359,14 @@ window.seerrFinLog = window.seerrFinLog || {
             return { requested: false, label: defaultLabel };
         }
 
+        // Some seasons/eps are present (more seasons should still be able to be requested)
+        if (status === 4) {
+            return { requested: false, label: defaultLabel };
+        }
+
         const labels = {
             2: 'Pending',
             3: 'Processing',
-            4: 'Partially available',
             5: 'Available',
             7: 'Blocklisted'
         };
@@ -665,27 +669,36 @@ window.seerrFinLog = window.seerrFinLog || {
             contentType: 'application/json; charset=utf-8',
             dataType: 'json'
         }).then(function (response) {
-            if (response && response.errors && response.errors.length > 0) {
-                const message = 'Request failed. Check logs for details.';
-                log.error('request failed with API errors', response);
+            // Seerr gives 202 with only a message when every selected season already exists in Seerr
+            const apiMessage = response && response.errors && response.errors.length > 0
+                ? 'Request failed. Check logs for details.'
+                : (response && response.message && response.id == null ? String(response.message) : '');
+
+            if (apiMessage) {
+                log.error('request was not created for ' + mediaType + '/' + mediaId, response);
                 if (typeof onError === 'function') {
-                    onError(message);
+                    onError(apiMessage);
                 } else {
-                    notifyUser(message);
+                    notifyUser(apiMessage);
                 }
-                return Promise.reject(response);
+                return Promise.reject({ handled: true });
             }
             log.info('request submitted for ' + mediaType + '/' + mediaId);
-            markRequestButton(!!option.is4k, 'Already requested');
+            // TV might still have more seasons to request (so don't lock the button)
+            if (mediaType !== 'tv') {
+                markRequestButton(!!option.is4k, 'Already requested');
+            }
             if (typeof onSuccess === 'function') {
                 onSuccess();
             }
         }).catch(function (err) {
-            if (err && err.errors) {
+            if (err && err.handled) {
                 return Promise.reject(err);
             }
             if (err && err.status === 409) {
-                markRequestButton(!!option.is4k, 'Already requested');
+                if (mediaType !== 'tv') {
+                    markRequestButton(!!option.is4k, 'Already requested');
+                }
                 if (typeof onSuccess === 'function') {
                     onSuccess();
                 }
@@ -981,7 +994,7 @@ window.seerrFinLog = window.seerrFinLog || {
                 submitRequest(mediaId, mediaType, {
                     is4k: is4k,
                     seasons: selectedSeasons
-                }, finishRequest, failRequest);
+                }, finishRequest, failRequest).catch(function () {});
                 return;
             }
 
