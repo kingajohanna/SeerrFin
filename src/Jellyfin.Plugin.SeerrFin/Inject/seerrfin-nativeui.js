@@ -54,6 +54,7 @@ window.seerrFinLog = window.seerrFinLog || {
             const usePoster = options.usePoster === true;
             // english backdrop hydration only for landscape
             const preferEnglishBackdrop = !usePoster && options.preferEnglishBackdrop === true;
+            const shell = plugin.buildCardShell(interactive);
             const cardType = usePoster ? (forGrid ? 'portraitCard' : 'overflowPortraitCard') : (forGrid ? 'backdropCard' : 'overflowBackdropCard');
             const padderType = usePoster ? (forGrid ? 'cardPadder-portrait' : 'cardPadder-overflowPortrait') : (forGrid ? 'cardPadder-backdrop' : 'cardPadder-overflowBackdrop');
 
@@ -85,7 +86,7 @@ window.seerrFinLog = window.seerrFinLog || {
                 const metaHtml = includeMetaText ? `
                     <div class="cardText cardTextCentered cardText-first"><bdi><span title="${safeName}">${safeName}</span></bdi></div>
                     <div class="cardText cardTextCentered cardText-secondary"><bdi><span title="${meta.year}">${meta.yearText}</span></bdi></div>` : '';
-                const overlayHtml = interactive ? `
+                const overlayHtml = interactive && shell.allowInnerButtons ? `
                     <div class="cardOverlayContainer">
                         <div class="cardImageContainer"></div>
                         <div class="cardOverlayButton-br flex">
@@ -96,7 +97,7 @@ window.seerrFinLog = window.seerrFinLog || {
                     </div>` : '';
 
                 return `
-                    <div class="card ${cardType} card-hoverable card-withuserdata" data-seerrfin-native-card="true" data-tmdb-id="${mediaId}" data-media-type="${mediaType}" data-name="${safeName}" data-year="${yearValue}" data-rating="${ratingValue}" data-use-poster="${usePoster ? 'true' : 'false'}"${fallbackAttr}${backdropPathAttr}${posterAttr}>
+                    <${shell.tag}${shell.openAttrs} class="card ${cardType} card-hoverable card-withuserdata${shell.focusClass}" data-seerrfin-native-card="true" data-tmdb-id="${mediaId}" data-media-type="${mediaType}" data-name="${safeName}" data-year="${yearValue}" data-rating="${ratingValue}" data-use-poster="${usePoster ? 'true' : 'false'}"${fallbackAttr}${backdropPathAttr}${posterAttr}>
                         <div class="cardBox cardBox-bottompadded">
                             <div class="cardScalable">
                                 <div class="cardPadder ${padderType} seerrfin-card-thumb-skeleton"></div>
@@ -106,7 +107,7 @@ window.seerrFinLog = window.seerrFinLog || {
                             </div>
                             ${metaHtml}
                         </div>
-                    </div>`;
+                    </${shell.tag}>`;
             }).join('');
         },
 
@@ -201,9 +202,11 @@ window.seerrFinLog = window.seerrFinLog || {
                 mediaHtml = `<span role="img" aria-label="${safeName}" style="position:absolute;inset:${inset};background-image:url('${plugin.escapeHtml(logoUrl).replace(/'/g, "\\'")}');background-size:contain;background-position:center;background-repeat:no-repeat"></span>`;
             }
 
+            const shell = plugin.buildCardShell(true);
+
             return `
-                <div class="card overflowBackdropCard card-hoverable"
-                    data-seerrfin-box-card="true" data-kind="${kind}" data-media-type="${mediaType}" data-id="${plugin.escapeHtml(String(id || ''))}" data-name="${safeName}" role="button" tabindex="0">
+                <${shell.tag}${shell.openAttrs} class="card overflowBackdropCard card-hoverable${shell.focusClass}"
+                    data-seerrfin-box-card="true" data-kind="${kind}" data-media-type="${mediaType}" data-id="${plugin.escapeHtml(String(id || ''))}" data-name="${safeName}"${shell.divRoleAttrs}>
                     <div class="cardBox cardBox-bottompadded">
                         <div class="cardScalable">
                             <div class="cardPadder cardPadder-overflowBackdrop"></div>
@@ -213,7 +216,7 @@ window.seerrFinLog = window.seerrFinLog || {
                         </div>
                         <div class="cardText cardTextCentered cardText-first"><bdi><span title="${safeName}">${safeName}</span></bdi></div>
                     </div>
-                </div>`;
+                </${shell.tag}>`;
         },
 
         // Renders native grid using Jellyfin page markup

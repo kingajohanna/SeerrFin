@@ -385,3 +385,12 @@
     opacity: 0.55;
     pointer-events: none;
 }
+/* TV layout: our letterboxd controls are plain buttons, so Jellyfin's tv focus css never reaches them */
+html.layout-tv .seerrfin-letterboxd-toolbar-btn:focus,
+html.layout-tv .seerrfin-letterboxd-toolbar button:focus,
+html.layout-tv .seerrfin-letterboxd-header button:focus,
+html.layout-tv .seerrfin-letterboxd-header input:focus {
+    outline: 0.14em solid var(--accent, #00a4dc);
+    outline-offset: 0.14em;
+    opacity: 1;
+}

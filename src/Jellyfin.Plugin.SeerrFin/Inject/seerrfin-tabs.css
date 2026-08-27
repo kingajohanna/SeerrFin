@@ -395,3 +395,16 @@ html.seerrfin-elegantfin .seerrfin-tv-sections .sectionTitleContainer-cards .sec
     margin: 0 !important;
     padding-top: 0 !important;
 }
+
+/* TV layout: Jellyfin only paints focus on the cards/buttons its own builders created, so mirror
+   the accent highlight on the controls we build ourselves. */
+html.layout-tv .seerrfin-view-more:focus,
+html.layout-tv .seerrfin-grid-back:focus,
+html.layout-tv [data-seerrfin-grid-view] [data-grid-nav]:focus,
+html.layout-tv [data-seerrfin-grid-view] [data-grid-menu]:focus,
+html.layout-tv [data-seerrfin-loadmore] button:focus {
+    outline: 0.14em solid var(--accent, #00a4dc);
+    outline-offset: 0.14em;
+    color: var(--accent, #00a4dc);
+    opacity: 1;
+}

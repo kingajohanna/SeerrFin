@@ -461,3 +461,14 @@ html.seerrfin-elegantfin .seerrfin-request-box--landscape .seerrfin-request-card
     width: 100% !important;
     max-width: 100% !important;
 }
+
+/* TV layout: our request controls are plain buttons, so Jellyfin's tv focus css never reaches them */
+html.layout-tv .seerrfin-requests-filter:focus,
+html.layout-tv .seerrfin-requests-reload:focus,
+html.layout-tv .seerrfin-request-action-btn:focus,
+html.layout-tv .seerrfin-requests-prev:focus,
+html.layout-tv .seerrfin-requests-next:focus {
+    outline: 0.14em solid var(--accent, #00a4dc);
+    outline-offset: 0.14em;
+    opacity: 1;
+}
