@@ -482,8 +482,10 @@ if (typeof window.seerrFinPlugin === 'undefined') {
 
             const button = document.createElement('button');
             button.type = 'button';
-            button.setAttribute('is', 'empty-button');
-            button.className = 'emby-tab-button emby-button';
+            button.setAttribute('is', 'emby-button');
+            // emby-button's createdCallback adds show-focus on tv, but it never runs for a node we
+            // build ourselves, so the theme's focused-tab colour never applied. Set it directly.
+            button.className = 'emby-tab-button emby-button' + (this.isTvLayout() ? ' show-focus' : '');
             button.setAttribute('data-seerrfin-tab', id);
             button.appendChild(titleEl);
             return button;
@@ -1443,6 +1445,25 @@ if (typeof window.seerrFinPlugin === 'undefined') {
             return (this._displaySettings || {}).DiscoverUsePosters === false;
         },
 
+        // Jellyfin only makes cards focusable in tv layout: cardBuilder swaps the card root for a
+        // <button> and adds show-focus so the theme can paint the focus border (or focus scale) on it.
+        isTvLayout: function () {
+            return document.documentElement.classList.contains('layout-tv');
+        },
+
+        // A <button> root can't hold nested buttons, and Jellyfin keeps cards free of inner
+        // focusables on tv so the d-pad steps card to card, so inner card buttons are dropped there.
+        buildCardShell: function (focusable) {
+            const tv = this.isTvLayout() && focusable !== false;
+            return {
+                tag: tv ? 'button' : 'div',
+                openAttrs: tv ? ' type="button"' : '',
+                focusClass: tv ? ' show-focus' : '',
+                divRoleAttrs: tv ? '' : ' role="button" tabindex="0"',
+                allowInnerButtons: !tv
+            };
+        },
+
         isNativeUiAvailable: function () {
             return !!(window.seerrFinNativeUi &&
                 typeof window.seerrFinNativeUi.createDiscoverCards === 'function' &&
@@ -1533,17 +1554,19 @@ if (typeof window.seerrFinPlugin === 'undefined') {
             return mount.firstElementChild;
         },
 
-        renderLetterboxdCardChrome: function () {
-            return `
-                <span class="seerrfin-letterboxd-select-indicator" aria-hidden="true">
-                    <span class="material-icons" aria-hidden="true">check</span>
-                </span>
+        renderLetterboxdCardChrome: function (includeActions) {
+            const actionsHtml = includeActions === false ? '' : `
                 <div class="seerrfin-request-card-actions">
                     <button type="button" class="seerrfin-request-action-btn seerrfin-request-modal-btn"
                         aria-label="Open request modal" title="Open request modal">
                         <span class="material-icons" aria-hidden="true">download</span>
                     </button>
                 </div>`;
+
+            return `
+                <span class="seerrfin-letterboxd-select-indicator" aria-hidden="true">
+                    <span class="material-icons" aria-hidden="true">check</span>
+                </span>${actionsHtml}`;
         },
 
         wrapDiscoverCard: function (cardHtml, options) {
@@ -1880,9 +1903,11 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                 overlayTitleHtml = `<span class="seerrfin-discover-overlay-title seerrfin-box-label">${safeName}</span>`;
             }
 
+            const shell = this.buildCardShell(true);
+
             return `
-                <div class="card seerrfin-discover-card seerrfin-discover-card--backdrop seerrfin-box-card seerrfin-discover-card--static${extraClass}"
-                    data-seerrfin-box-card="true" data-kind="${kind}" data-media-type="${mediaType}" data-id="${id}" data-name="${safeName}" role="button" tabindex="0">
+                <${shell.tag}${shell.openAttrs} class="card seerrfin-discover-card seerrfin-discover-card--backdrop seerrfin-box-card seerrfin-discover-card--static${shell.focusClass}${extraClass}"
+                    data-seerrfin-box-card="true" data-kind="${kind}" data-media-type="${mediaType}" data-id="${id}" data-name="${safeName}"${shell.divRoleAttrs}>
                     <div class="cardBox">
                         <div class="cardScalable seerrfin-discover-backdrop-scalable">
                             <div class="cardPadder seerrfin-discover-backdrop-padder"></div>
@@ -1891,7 +1916,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                             </div>
                         </div>
                     </div>
-                </div>`;
+                </${shell.tag}>`;
         },
 
         buildBrowseGridPath: function (kind, mediaType, id) {
@@ -1963,6 +1988,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
             const staticClass = interactive ? '' : ' seerrfin-discover-card--static';
             const boxClass = includeMetaText ? 'cardBox cardBox-bottompadded' : 'cardBox';
             const letterboxdSlot = options.letterboxdSlot === true;
+            const shell = this.buildCardShell(interactive || letterboxdSlot);
 
             return items.map(function (item) {
                 const mediaId = self.getProviderId(item, 'Tmdb') ||
@@ -1979,7 +2005,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
 
                 const safeUrl = self.escapeHtml(posterUrl || '');
                 const imageAttrs = posterUrl ? ` data-src="${safeUrl}"` : '';
-                const overlayHtml = interactive ? `
+                const overlayHtml = interactive && shell.allowInnerButtons ? `
                     <div class="cardOverlayContainer">
                         <div class="cardImageContainer"></div>
                         <div class="cardOverlayButton-br flex">
@@ -2003,10 +2029,10 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                 const ariaSelected = letterboxdSlot
                     ? ` aria-selected="${selected ? 'true' : 'false'}"`
                     : '';
-                const chromeHtml = letterboxdSlot ? self.renderLetterboxdCardChrome() : '';
+                const chromeHtml = letterboxdSlot ? self.renderLetterboxdCardChrome(shell.allowInnerButtons) : '';
 
                 const cardHtml = `
-                    <div class="card ${cardType} seerrfin-discover-card${staticClass}${letterboxdClass}" data-tmdb-id="${mediaId}" data-media-type="${mediaType}"${ariaSelected}>
+                    <${shell.tag}${shell.openAttrs} class="card ${cardType} seerrfin-discover-card${shell.focusClass}${staticClass}${letterboxdClass}" data-tmdb-id="${mediaId}" data-media-type="${mediaType}"${ariaSelected}>
                         <div class="${boxClass}">
                             <div class="cardScalable">
                                 <div class="cardPadder ${padderType} lazy-hidden-children"></div>
@@ -2016,7 +2042,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                             </div>
                             ${metaHtml}
                         </div>
-                    </div>`;
+                    </${shell.tag}>`;
 
                 return self.wrapDiscoverCard(cardHtml, options);
             }).join('');
@@ -2031,6 +2057,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
             const staticClass = interactive ? '' : ' seerrfin-discover-card--static';
             const boxClass = includeMetaText ? 'cardBox cardBox-bottompadded' : 'cardBox';
             const letterboxdSlot = options.letterboxdSlot === true;
+            const shell = this.buildCardShell(interactive || letterboxdSlot);
 
             return items.map(function (item) {
                 const mediaId = self.getProviderId(item, 'Tmdb') ||
@@ -2051,7 +2078,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                 const safeBackdropPath = self.escapeHtml(tmdbBackdropPath);
                 const fallbackAttr = safeFallback ? ` data-fallback-src="${safeFallback}"` : '';
                 const backdropPathAttr = safeBackdropPath ? ` data-tmdb-backdrop-path="${safeBackdropPath}"` : '';
-                const overlayHtml = interactive ? `
+                const overlayHtml = interactive && shell.allowInnerButtons ? `
                     <div class="cardOverlayContainer">
                         <div class="cardImageContainer"></div>
                         <div class="cardOverlayButton-br flex">
@@ -2071,10 +2098,10 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                     : false;
                 const letterboxdClass = letterboxdSlot ? ` seerrfin-letterboxd-card${selected ? ' is-selected' : ''}` : '';
                 const ariaSelected = letterboxdSlot ? ` aria-selected="${selected ? 'true' : 'false'}"` : '';
-                const chromeHtml = letterboxdSlot ? self.renderLetterboxdCardChrome() : '';
+                const chromeHtml = letterboxdSlot ? self.renderLetterboxdCardChrome(shell.allowInnerButtons) : '';
 
                 const cardHtml = `
-                    <div class="card seerrfin-discover-card seerrfin-discover-card--backdrop${gridClass}${staticClass}${letterboxdClass}" data-tmdb-id="${mediaId}" data-media-type="${mediaType}"${fallbackAttr}${backdropPathAttr}${ariaSelected}>
+                    <${shell.tag}${shell.openAttrs} class="card seerrfin-discover-card seerrfin-discover-card--backdrop${shell.focusClass}${gridClass}${staticClass}${letterboxdClass}" data-tmdb-id="${mediaId}" data-media-type="${mediaType}"${fallbackAttr}${backdropPathAttr}${ariaSelected}>
                         <div class="${boxClass}">
                             <div class="cardScalable seerrfin-discover-backdrop-scalable">
                                 <div class="cardPadder seerrfin-discover-backdrop-padder"></div>
@@ -2087,7 +2114,7 @@ if (typeof window.seerrFinPlugin === 'undefined') {
                             </div>
                             ${metaHtml}
                         </div>
-                    </div>`;
+                    </${shell.tag}>`;
 
                 return self.wrapDiscoverCard(cardHtml, options);
             }).join('');
